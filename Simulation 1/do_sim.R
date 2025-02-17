@@ -13,9 +13,9 @@ do_sim <- function(pos, cond, outputfile, verbose = FALSE){
   # # get condition levels and set seed:
   # n <- 50
   # obs <- 25
-  # lambda_noninvariance =  "uniform"
-  # theta_noninvariance =  "uniform"
-  # nu_noninvariance =  "uniform"
+  # lambda_noninvariance =  "unidirectional"
+  # theta_noninvariance =  "unidirectional"
+  # nu_noninvariance =  "unidirectional"
   # seed_cond <- 12345
   # set.seed(seed_cond)
   
@@ -76,7 +76,7 @@ do_sim <- function(pos, cond, outputfile, verbose = FALSE){
   # loadings in group 2 are equal to group 1 unless modified by condition:
   lambda_g2 <- lambda_g1
   
-  if(lambda_noninvariance == "uniform"){
+  if(lambda_noninvariance == "unidirectional"){
     lambda_g2[3, 1] <- lambda_g2[7, 2] <- loadings_baseline*1.5
     lambda_g2[4, 1] <- lambda_g2[8, 2] <- loadings_baseline*1.5
   }
@@ -95,7 +95,7 @@ do_sim <- function(pos, cond, outputfile, verbose = FALSE){
   # residual variances in group 2 are equal to group 1 unless modified by condition:
   theta_g2 <- theta_g1
   
-  if(theta_noninvariance == "uniform"){
+  if(theta_noninvariance == "unidirectional"){
     theta_g2[3, 3] <- theta_g2[7, 7] <- resvar_baseline*0.5
     theta_g2[4, 4] <- theta_g2[8, 8] <- resvar_baseline*0.5
   }
@@ -111,7 +111,7 @@ do_sim <- function(pos, cond, outputfile, verbose = FALSE){
   # intercepts in group 2 are equal to group 1 unless modified by condition:
   nu_g2 <- nu_g1
   
-  if(nu_noninvariance == "uniform"){
+  if(nu_noninvariance == "unidirectional"){
     nu_g2[3] <- nu_g2[7] <- 1
     nu_g2[4] <- nu_g2[8] <- 1
   }
