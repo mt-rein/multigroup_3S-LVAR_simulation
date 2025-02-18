@@ -32,7 +32,7 @@ cond <- expand.grid(replication = 1:50,
                     obs = c(25, 50, 100),
                     lambda_noninvariance = c("no", "unidirectional", "mixed"),
                     theta_noninvariance = c("no", "unidirectional", "mixed"),
-                    nu_noninvariance = c("no", "unidirectional", "mixed"))
+                    tau_noninvariance = c("no", "unidirectional", "mixed"))
 
 
 # add seeds:

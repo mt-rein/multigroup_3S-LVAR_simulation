@@ -15,7 +15,7 @@ do_sim <- function(pos, cond, outputfile, verbose = FALSE){
   # obs <- 25
   # lambda_noninvariance =  "unidirectional"
   # theta_noninvariance =  "unidirectional"
-  # nu_noninvariance =  "unidirectional"
+  # tau_noninvariance =  "unidirectional"
   # seed_cond <- 12345
   # set.seed(seed_cond)
   
@@ -26,7 +26,7 @@ do_sim <- function(pos, cond, outputfile, verbose = FALSE){
   obs <- cond$obs[pos]
   lambda_noninvariance =  cond$lambda_noninvariance[pos] |> as.character()
   theta_noninvariance =  cond$theta_noninvariance[pos] |> as.character()
-  nu_noninvariance =  cond$nu_noninvariance[pos] |> as.character()
+  tau_noninvariance =  cond$tau_noninvariance[pos] |> as.character()
   seed_cond <- cond$seed[pos]
   set.seed(seed_cond)
   
@@ -39,10 +39,10 @@ do_sim <- function(pos, cond, outputfile, verbose = FALSE){
   phi21_g1_pop <- .1
   
   # group 2
-  phi11_g2_pop <- .3
-  phi22_g2_pop <- .3
-  phi12_g2_pop <- .1
-  phi21_g2_pop <- .1
+  phi11_g2_pop <- .4
+  phi22_g2_pop <- .4
+  phi12_g2_pop <- .2
+  phi21_g2_pop <- .2
   
   # combine into matrices:
   phimat_g1 <- matrix(c(phi11_g1_pop, phi12_g1_pop,
@@ -104,20 +104,20 @@ do_sim <- function(pos, cond, outputfile, verbose = FALSE){
     theta_g2[4, 4] <- theta_g2[8, 8] <- resvar_baseline*1.5
   }
   
-  ## nu vector (intercepts)
+  ##  vector (intercepts)
   # intercepts are all 0 in group 1
-  nu_g1 <- rep(0, 8)
+  tau_g1 <- rep(0, 8)
   
   # intercepts in group 2 are equal to group 1 unless modified by condition:
-  nu_g2 <- nu_g1
+  tau_g2 <- tau_g1
   
-  if(nu_noninvariance == "unidirectional"){
-    nu_g2[3] <- nu_g2[7] <- 1
-    nu_g2[4] <- nu_g2[8] <- 1
+  if(tau_noninvariance == "unidirectional"){
+    tau_g2[3] <- tau_g2[7] <- 1
+    tau_g2[4] <- tau_g2[8] <- 1
   }
-  if(nu_noninvariance == "mixed"){
-    nu_g2[3] <- nu_g2[7] <- 1
-    nu_g2[4] <- nu_g2[8] <- -1
+  if(tau_noninvariance == "mixed"){
+    tau_g2[3] <- tau_g2[7] <- 1
+    tau_g2[4] <- tau_g2[8] <- -1
   }
   
   #### generate items scores ####
@@ -147,14 +147,14 @@ do_sim <- function(pos, cond, outputfile, verbose = FALSE){
       zetamat_i <- zetamat_g1
       lambda_i <- lambda_g1
       theta_i <- theta_g1
-      nu_i <- nu_g1
+      tau_i <- tau_g1
     }
     if(g == "group2"){
       phimat_i <- phimat_g2
       zetamat_i <- zetamat_g2
       lambda_i <- lambda_g2
       theta_i <- theta_g2
-      nu_i <- nu_g2
+      tau_i <- tau_g2
     }
     
     # generate person-specific latent means:
@@ -170,10 +170,10 @@ do_sim <- function(pos, cond, outputfile, verbose = FALSE){
     epsilon_i <- mvrnorm(obs, mu = rep(0, 8),
                          Sigma = theta_i, empirical=T)
     
-    nu_matrix <- rep(nu_i, each = obs) |> matrix(nrow = obs)
+    tau_matrix <- rep(tau_i, each = obs) |> matrix(nrow = obs)
     
     # transform factor scores into observed scores:
-    data_i <- as.matrix(eta_i[, c("eta1", "eta2")]) %*% t(lambda_i) + nu_matrix + epsilon_i |>
+    data_i <- as.matrix(eta_i[, c("eta1", "eta2")]) %*% t(lambda_i) + tau_matrix + epsilon_i |>
       as.data.frame()
     colnames(data_i) <- paste0("v", 1:8)
     
@@ -368,7 +368,7 @@ do_sim <- function(pos, cond, outputfile, verbose = FALSE){
                                      "v8 ~~ v8")
   }
   
-  if(nu_noninvariance == "no"){
+  if(tau_noninvariance == "no"){
     partial_noninvariances <- partial_noninvariances
   } else {
     partial_noninvariances[[1]] <- c(partial_noninvariances[[1]], 
@@ -512,12 +512,12 @@ do_sim <- function(pos, cond, outputfile, verbose = FALSE){
     bias_theta <- sum(theta_true - theta_ests)/(4*2)  |> as.numeric()
     RMSE_theta <- sqrt(sum((theta_true - theta_ests)^2)/(4*2)) |> as.numeric()
     
-    nu_ests <- output_step2_multi$result$result$MMparameters$nu_group
-    nu_ests <- do.call(rbind, lapply(nu_ests, function(x){c(x[3:4, 1], x[7:8, 2])}))
-    nu_true <- matrix(c(nu_g1[c(3, 4, 7, 8)], nu_g2[c(3, 4, 7, 8)]),
+    tau_ests <- output_step2_multi$result$result$MMparameters$tau_group
+    tau_ests <- do.call(rbind, lapply(tau_ests, function(x){c(x[3:4, 1], x[7:8, 2])}))
+    tau_true <- matrix(c(tau_g1[c(3, 4, 7, 8)], tau_g2[c(3, 4, 7, 8)]),
                       nrow = 2, byrow = TRUE)
-    bias_nu <- sum(nu_true - nu_ests)/(4*2)  |> as.numeric()
-    RMSE_nu <- sqrt(sum((nu_true - nu_ests)^2)/(4*2)) |> as.numeric()
+    bias_tau <- sum(tau_true - tau_ests)/(4*2)  |> as.numeric()
+    RMSE_tau <- sqrt(sum((tau_true - tau_ests)^2)/(4*2)) |> as.numeric()
   } else {
     multi_phi11_g1 <- NA
     multi_phi22_g1 <- NA
@@ -559,8 +559,8 @@ do_sim <- function(pos, cond, outputfile, verbose = FALSE){
     RMSE_lambda <- NA
     bias_theta <- NA
     RMSE_theta <- NA
-    bias_nu <- NA
-    RMSE_nu <- NA
+    bias_tau <- NA
+    RMSE_tau <- NA
   }
   
   duration <- difftime(Sys.time(), start, units = "secs") |> as.numeric()
@@ -569,7 +569,7 @@ do_sim <- function(pos, cond, outputfile, verbose = FALSE){
               "n" = n, "obs" = obs,
               "lambda_noninvariance" = lambda_noninvariance,
               "theta_noninvariance" = theta_noninvariance,
-              "nu_noninvariance" = nu_noninvariance,
+              "tau_noninvariance" = tau_noninvariance,
               "duration" = duration,
               "phi11_g1_pop" = phi11_g1_pop, "phi12_g1_pop" = phi12_g1_pop, "phi21_g1_pop" = phi21_g1_pop, "phi22_g1_pop" = phi22_g1_pop,
               "phi11_g2_pop" = phi11_g2_pop, "phi12_g2_pop" = phi12_g2_pop, "phi21_g2_pop" = phi21_g2_pop, "phi22_g2_pop" = phi22_g2_pop,
@@ -591,8 +591,8 @@ do_sim <- function(pos, cond, outputfile, verbose = FALSE){
               "multi_phi11_g2_se" = multi_phi11_g2_se, "multi_phi12_g2_se" = multi_phi12_g2_se, "multi_phi21_g2_se" = multi_phi21_g2_se, "multi_phi22_g2_se" = multi_phi22_g2_se,
               "multi_zeta1_g1_se" = multi_zeta1_g1_se, "multi_zeta2_g1_se" = multi_zeta2_g1_se, "multi_zeta12_g1_se" = multi_zeta12_g1_se,
               "multi_zeta1_g2_se" = multi_zeta1_g2_se, "multi_zeta2_g2_se" = multi_zeta2_g2_se, "multi_zeta12_g2_se" = multi_zeta12_g2_se,
-              "bias_lambda" = bias_lambda, "bias_theta" = bias_theta, "bias_nu" = bias_nu,
-              "RMSE_lambda" = RMSE_lambda, "RMSE_theta" = RMSE_theta, "RMSE_nu" = RMSE_nu,
+              "bias_lambda" = bias_lambda, "bias_theta" = bias_theta, "bias_tau" = bias_tau,
+              "RMSE_lambda" = RMSE_lambda, "RMSE_theta" = RMSE_theta, "RMSE_tau" = RMSE_tau,
               "step1_single_warning" = step1_single_warning, "step2_single_warning" = step2_single_warning, "step3_single_warning" = step3_single_warning,
               "step1_single_error" = step1_single_error, "step2_single_error" = step2_single_error, "step3_single_error" = step3_single_error,
               "step1_multi_warning" = step1_multi_warning, "step2_multi_warning" = step2_multi_warning, "step3_multi_warning" = step3_multi_warning,

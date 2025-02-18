@@ -244,7 +244,7 @@ step3 <- function(step2output, id, step3group = NULL){
     fullmodel <- generate_startval(fullmodel)
     
     # fit the model
-    fullmodelr <- mxRun(fullmodel)
+    fullmodelr <- mxTryHard(fullmodel)
   }
   
   #### 7) build the output ####
