@@ -7,42 +7,32 @@ do_sim <- function(pos, cond, outputfile, verbose = FALSE){
   # verbose = if TRUE, prints a message after the iteration is finished
   
   #### for testing:
-  # pos = 1
-  # replication <- 1
-  # iteration <- 1
-  # # get condition levels and set seed:
-  # n <- 50
-  # obs <- 25
-  # lambda_noninvariance =  "unidirectional"
-  # theta_noninvariance =  "unidirectional"
-  # tau_noninvariance =  "unidirectional"
-  # seed_cond <- 12345
-  # set.seed(seed_cond)
+  #pos = 1
+
   
   replication <- cond$replication[pos]
   iteration <- cond$iteration[pos]
   # get condition levels and set seed:
   n <- cond$n[pos]
   obs <- cond$obs[pos]
-  lambda_noninvariance =  cond$lambda_noninvariance[pos] |> as.character()
-  theta_noninvariance =  cond$theta_noninvariance[pos] |> as.character()
-  tau_noninvariance =  cond$tau_noninvariance[pos] |> as.character()
+  invariance_level =  cond$invariance_level[pos] |> as.character()
+  direction =  cond$direction[pos] |> as.character()
   seed_cond <- cond$seed[pos]
   set.seed(seed_cond)
   
   #### set data generation parameters ####
   ## regression parameters:
   # group 1
-  phi11_g1_pop <- .3
-  phi22_g1_pop <- .3
-  phi12_g1_pop <- .1
-  phi21_g1_pop <- .1
+  phi11_g1_pop <- .33
+  phi22_g1_pop <- .37
+  phi12_g1_pop <- .05
+  phi21_g1_pop <- .04
   
   # group 2
-  phi11_g2_pop <- .4
-  phi22_g2_pop <- .4
-  phi12_g2_pop <- .2
-  phi21_g2_pop <- .2
+  phi11_g2_pop <- .42
+  phi22_g2_pop <- .23
+  phi12_g2_pop <- .17
+  phi21_g2_pop <- .02
   
   # combine into matrices:
   phimat_g1 <- matrix(c(phi11_g1_pop, phi12_g1_pop,
@@ -67,57 +57,56 @@ do_sim <- function(pos, cond, outputfile, verbose = FALSE){
   zeta12_g2_pop <- zetamat_g2[1, 2]
   
   ## lambda matrix (loadings):
-  loadings_baseline <- .72
+  loadings_baseline <- c(.55, .55, .7, .4)
   
   # loadings in group 1 are all equal to baseline:
-  lambda_g1 <- lavaan::lav_matrix_bdiag(list(rep(loadings_baseline, 4),
-                                             rep(loadings_baseline, 4)))
+  lambda_g1 <- lavaan::lav_matrix_bdiag(list(loadings_baseline,
+                                             loadings_baseline))
   
   # loadings in group 2 are equal to group 1 unless modified by condition:
-  lambda_g2 <- lambda_g1
-  
-  if(lambda_noninvariance == "unidirectional"){
-    lambda_g2[3, 1] <- lambda_g2[7, 2] <- loadings_baseline*1.5
-    lambda_g2[4, 1] <- lambda_g2[8, 2] <- loadings_baseline*1.5
+  loadings_g2 <- loadings_baseline
+  if(invariance_level == "partial_metric"){
+    if(direction == "mixed"){
+      loadings_g2[3:4] <-  loadings_g2[4:3]
+    } else {
+      loadings_g2[3:4] <- loadings_g2[3:4] + .3
+    }
   }
-  if(lambda_noninvariance == "mixed"){
-    lambda_g2[3, 1] <- lambda_g2[7, 2] <- loadings_baseline*1.5
-    lambda_g2[4, 1] <- lambda_g2[8, 2] <- loadings_baseline*0.5
-  }
+  lambda_g2 <- lavaan::lav_matrix_bdiag(list(loadings_g2,
+                                             loadings_g2))
   
   ## theta matrix (residual variances):
-  resvar_baseline <- .48
+  resvar_baseline <- c(.5, .9, .51, .84)
   
   # residual variances in group 1 are all equal to baseline:
   theta_g1 <- matrix(0, nrow = 8, ncol = 8)
-  diag(theta_g1) <- resvar_baseline
+  diag(theta_g1) <- c(resvar_baseline, resvar_baseline)
   
   # residual variances in group 2 are equal to group 1 unless modified by condition:
-  theta_g2 <- theta_g1
-  
-  if(theta_noninvariance == "unidirectional"){
-    theta_g2[3, 3] <- theta_g2[7, 7] <- resvar_baseline*0.5
-    theta_g2[4, 4] <- theta_g2[8, 8] <- resvar_baseline*0.5
+  resvar_g2 <- resvar_baseline
+  if(invariance_level %in% c("full_scalar", "partial_scalar", "partial_metric")){
+    if(direction == "mixed"){
+      resvar_g2 <- resvar_g2[c(2, 1, 4, 3)]
+    } else {
+      resvar_g2 <- resvar_g2 - .4
+    }
   }
-  if(theta_noninvariance == "mixed"){
-    theta_g2[3, 3] <- theta_g2[7, 7] <- resvar_baseline*0.5
-    theta_g2[4, 4] <- theta_g2[8, 8] <- resvar_baseline*1.5
-  }
+  theta_g2 <- matrix(0, nrow = 8, ncol = 8)
+  diag(theta_g2) <- c(resvar_g2, resvar_g2)
   
-  ##  vector (intercepts)
+  ##  intercepts
   # intercepts are all 0 in group 1
-  tau_g1 <- rep(0, 8)
+  tau_g1 <- c(1, 1, 0, 2, 1, 1, 0, 2)
   
   # intercepts in group 2 are equal to group 1 unless modified by condition:
   tau_g2 <- tau_g1
   
-  if(tau_noninvariance == "unidirectional"){
-    tau_g2[3] <- tau_g2[7] <- 1
-    tau_g2[4] <- tau_g2[8] <- 1
-  }
-  if(tau_noninvariance == "mixed"){
-    tau_g2[3] <- tau_g2[7] <- 1
-    tau_g2[4] <- tau_g2[8] <- -1
+  if(invariance_level %in% c("partial_scalar", "partial_metric")){
+    if(direction == "mixed"){
+      tau_g2[c(3, 4, 7, 8)] <- tau_g2[c(4, 3, 8, 7)]
+    } else {
+      tau_g2[c(3, 4, 7, 8)] <- tau_g2[c(3, 4, 7, 8)] + 1
+    }
   }
   
   #### generate items scores ####
@@ -148,6 +137,8 @@ do_sim <- function(pos, cond, outputfile, verbose = FALSE){
       lambda_i <- lambda_g1
       theta_i <- theta_g1
       tau_i <- tau_g1
+      mu_i <- c(rnorm(1, 3.09, 1),
+                rnorm(1, .98, 1))
     }
     if(g == "group2"){
       phimat_i <- phimat_g2
@@ -155,10 +146,9 @@ do_sim <- function(pos, cond, outputfile, verbose = FALSE){
       lambda_i <- lambda_g2
       theta_i <- theta_g2
       tau_i <- tau_g2
+      mu_i <- c(rnorm(1, 4.56, 1),
+                rnorm(1, .32, 1))
     }
-    
-    # generate person-specific latent means:
-    mu_i <- rnorm(2, mean = 5, sd = 1)
     
     # generate factor scores:
     eta_i <- sim_VAR(factors = 2, obs = obs,
@@ -188,11 +178,11 @@ do_sim <- function(pos, cond, outputfile, verbose = FALSE){
   
   start <- Sys.time()
   model_step1 <- list(
-    "f1 =~ 0.72*v1 + v2 + v3 + v4
-      v1 ~ 0*1
+    "f1 =~ 0.55*v1 + v2 + v3 + v4
+      v1 ~ 1*1
       f1 ~ NA*1",
-    "f2 =~ 0.72*v5 + v6 + v7 + v8
-      v5 ~ 0*1
+    "f2 =~ 0.55*v5 + v6 + v7 + v8
+      v5 ~ 1*1
       f2 ~ NA*1")
   
   #### SINGLE GROUP ####
@@ -350,36 +340,26 @@ do_sim <- function(pos, cond, outputfile, verbose = FALSE){
   
   
   #### MULTI-GROUP ####
-  if(lambda_noninvariance == "no"){
-    partial_noninvariances <- list(NULL, NULL)
+  # which parameters are constrained to equality?
+  if(invariance_level == "full_strict"){
+    invariances <- c("loadings", "intercepts", "residuals")
   } else {
-    partial_noninvariances <- list(c("f1 =~ v3", "f1 =~ v4"),
-                                   c("f2 =~ v7", "f2 =~ v8"))
+    invariances <- c("loadings", "intercepts")
   }
   
-  if(theta_noninvariance == "no"){
-    partial_noninvariances <- partial_noninvariances
-  } else {
-    partial_noninvariances[[1]] <- c(partial_noninvariances[[1]], 
-                                     "v3 ~~ v3", 
-                                     "v4 ~~ v4")
-    partial_noninvariances[[2]] <- c(partial_noninvariances[[2]], 
-                                     "v7 ~~ v7", 
-                                     "v8 ~~ v8")
+  partial_noninvariances <- list(NULL, NULL)
+  # if there are partial invariances, add these:
+  if(invariance_level == "partial_scalar"){
+    partial_noninvariances <- list(c("v3 ~ 1", "v4 ~ 1"),
+                                   c("v7 ~ 1", "v8 ~ 1"))
+  }
+  if(invariance_level == "partial_metric"){
+    partial_noninvariances <- list(c("f1 =~ v3", "f1 =~ v4",
+                                     "v3 ~ 1", "v4 ~ 1"),
+                                   c("f2 =~ v7", "f2 =~ v8",
+                                     "v7 ~ 1", "v8 ~ 1"))
   }
   
-  if(tau_noninvariance == "no"){
-    partial_noninvariances <- partial_noninvariances
-  } else {
-    partial_noninvariances[[1]] <- c(partial_noninvariances[[1]], 
-                                     "v3 ~ 1", 
-                                     "v4 ~ 1")
-    partial_noninvariances[[2]] <- c(partial_noninvariances[[2]], 
-                                     "v7 ~ 1", 
-                                     "v8 ~ 1")
-  }
-  
-  invariances <- c("loadings", "intercepts", "residuals")
   output_step1_multi <- run_step1(data = data,
                                   measurementmodel = model_step1,
                                   group = "group",
@@ -567,9 +547,8 @@ do_sim <- function(pos, cond, outputfile, verbose = FALSE){
   
   output <- c("iteration" = iteration, "replication" = replication,
               "n" = n, "obs" = obs,
-              "lambda_noninvariance" = lambda_noninvariance,
-              "theta_noninvariance" = theta_noninvariance,
-              "tau_noninvariance" = tau_noninvariance,
+              "invariance_level" = invariance_level,
+              "direction" = direction,
               "duration" = duration,
               "phi11_g1_pop" = phi11_g1_pop, "phi12_g1_pop" = phi12_g1_pop, "phi21_g1_pop" = phi21_g1_pop, "phi22_g1_pop" = phi22_g1_pop,
               "phi11_g2_pop" = phi11_g2_pop, "phi12_g2_pop" = phi12_g2_pop, "phi21_g2_pop" = phi21_g2_pop, "phi22_g2_pop" = phi22_g2_pop,
@@ -603,7 +582,7 @@ do_sim <- function(pos, cond, outputfile, verbose = FALSE){
               "step1_multi_warning_text" = step1_multi_warning_text, "step2_multi_warning_text" = step2_multi_warning_text, "step3_multi_warning_text" = step3_multi_warning_text,
               "step1_multi_error_text" = step1_multi_error_text, "step2_multi_error_text" = step2_multi_error_text, "step3_multi_error_text" = step3_multi_error_text)
   
-  for(i in 97:108){
+  for(i in 98:109){
     output[i] <- str_squish(output[i])                                          # removes all whitespace and linebreaks from the error and warning strings
     output[i] <- gsub(",", "", output[i])                                       # removes all commata from error and warning strings (to prevent messing up the CSV file)
   }

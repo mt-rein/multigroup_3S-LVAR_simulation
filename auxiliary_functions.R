@@ -3,10 +3,11 @@
 #### sim_VAR() ####
 # this function generates data for a single individual according to a vector autoregressive model
 sim_VAR <- function(factors, obs, phi, zeta, mu, burn_in = 0){
+  # factors = number of factors
   # obs = number of observations
   # phi = auto-regressive effect (a matrix in case of multiple constructs)
   # zeta = innovation variance (a matrix in case of multiple constructs)
-  # intercept = intercept (a vector in case of multiple constructs)
+  # mu = latent means (a vector in case of multiple constructs)
   # burn_in = length of burn in (i.e., data that are generated to remove influence of initial random draw)
   
   

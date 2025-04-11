@@ -30,9 +30,8 @@ source("Simulation 1/do_sim.R")
 cond <- expand.grid(replication = 1:50,
                     n = c(50, 100),
                     obs = c(25, 50, 100),
-                    lambda_noninvariance = c("no", "unidirectional", "mixed"),
-                    theta_noninvariance = c("no", "unidirectional", "mixed"),
-                    tau_noninvariance = c("no", "unidirectional", "mixed"))
+                    invariance_level = c("full_strict", "full_scalar", "partial_scalar", "partial_metric"),
+                    direction = c("unidirectional", "mixed"))
 
 
 # add seeds:

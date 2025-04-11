@@ -87,8 +87,9 @@ step2 <- function(step1output){
     
     # compute lambda_star and theta_star
     sigma_g <- lambda_group %*% psi_group %*% t(lambda_group) + theta_group
-    lambda_star[1, ] <- diag(psi_group %*% t(lambda_group) %*% solve(sigma_g) %*% lambda_group)
-    theta_star[1, ] <- lambda_star[1, ]*(1-lambda_star[1, ])*diag(psi_group)
+    A_g <- psi_group %*% t(lambda_group) %*% solve(sigma_g)
+    lambda_star[1, ] <- diag(A_g %*% lambda_group)
+    theta_star[1, ] <- diag(A_g %*% theta_group %*% t(A_g))
   }
   
   #### compute lambda_star and theta_star (with grouping variable) ####

@@ -13,9 +13,9 @@ results <- read_csv("Simulation 1/sim1.csv",
                                      step1_multi_error_text = col_character(),
                                      step2_multi_error_text = col_character(),
                                      step3_multi_error_text = col_character())) |> 
-  mutate(lambda_noninvariance = factor(lambda_noninvariance, levels = c("no", "uniform", "mixed")),
-         theta_noninvariance = factor(theta_noninvariance, levels = c("no", "uniform", "mixed")),
-         tau_noninvariance = factor(tau_noninvariance, levels = c("no", "uniform", "mixed"))
+  mutate(lambda_noninvariance = factor(lambda_noninvariance, levels = c("no", "unidirectional", "mixed")),
+         theta_noninvariance = factor(theta_noninvariance, levels = c("no", "unidirectional", "mixed")),
+         tau_noninvariance = factor(tau_noninvariance, levels = c("no", "unidirectional", "mixed"))
   ) |> 
   arrange(iteration)                                                            # sort by iteration
 
@@ -23,12 +23,14 @@ results |>
   summarize(across(step1_single_warning:step3_multi_error, ~sum(.x, na.rm = TRUE))) |> 
   print(width = Inf)
 
-unique(c(results$step3_single_error_text, results$step3_multi_warning_text))
-
-results$pos[which(results$step3_single_warning)]
-
-results <- results |> 
-  dplyr::filter(!step3_single_warning, !step3_multi_warning)
+results |> group_by(n, obs) |> 
+  summarize(mean_bias_lambda = mean(bias_lambda),
+            mean_bias_theta = mean(bias_theta),
+            mean_bias_tau = mean(bias_tau),
+            mean_RMSE_lambda = mean(RMSE_lambda),
+            mean_RMSE_theta = mean(RMSE_theta),
+            mean_RMSE_tau = mean(RMSE_tau)) |> 
+  write_csv(file = "MM recovery.csv")
 
 performance <- results |> 
   group_by(n, obs, lambda_noninvariance, theta_noninvariance, tau_noninvariance) |> 
@@ -77,7 +79,7 @@ performance_obs <- performance |>
 print(performance_obs, width = Inf)
 
 performance_lambda_noninvariance <- performance |> 
-  group_by(method, lambda_noninvariance) |> 
+  group_by(lambda_noninvariance, method) |> 
   summarise(across(phi11_g1:phi21_g2, ~ mean(.x, na.rm = TRUE)))
 print(performance_lambda_noninvariance, width = Inf)
 
@@ -97,4 +99,4 @@ performance_all_invariances <- performance |>
   summarise(across(phi11_g1:phi21_g2, ~ mean(.x, na.rm = TRUE)))
 print(performance_all_invariances, width = Inf)
 
-write_csv(performance_all_invariances, file = "test.csv")
+write_csv(performance_all_invariances, file = "testzwei.csv")
