@@ -46,9 +46,9 @@ sim_VAR <- function(factors, obs, phi, zeta, mu, burn_in = 0){
 # generate starting values
 generate_startval <- function(model){
   values <- coef(model)
-  values[grep("^phi", names(values))] <- runif(length(grep("^phi", names(values))), .05, .3)
-  values[grep("zeta[0-9]_+", names(values))] <- runif(length(grep("zeta[0-9]_+", names(values))), .5, 1.5)
-  values[grep("zeta12_+", names(values))] <- runif(length(grep("zeta12_+", names(values))), .1, .5)
+  values[grep("^phi", names(values))] <- runif(length(grep("^phi", names(values))), .05, .5)
+  values[grep("zeta[0-9]_+", names(values))] <- runif(length(grep("zeta[0-9]_+", names(values))), .5, 1)
+  values[grep("zeta12_+", names(values))] <- runif(length(grep("zeta12_+", names(values))), .1, .3)
   model <- omxSetParameters(model,
                             labels = names(values),
                             values = values)
