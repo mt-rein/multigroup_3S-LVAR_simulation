@@ -27,11 +27,12 @@ source("auxiliary_functions.R")
 source("Simulation 1/do_sim.R")
 
 #### define condition grid
-cond <- expand.grid(replication = 1:50,
-                    n = c(50, 100),
-                    obs = c(25, 50, 100),
+cond <- expand.grid(replication = 1:100,
                     invariance_level = c("full_strict", "full_scalar", "partial_scalar", "partial_metric"),
-                    direction = c("unidirectional", "mixed"))
+                    pattern = c("unidirectional", "mixed"),
+                    ss_n = c(24, 72),
+                    ss_t = c(14, 56),
+                    ss_ratio = c("balanced", "unbalanced"))
 
 
 # add seeds:

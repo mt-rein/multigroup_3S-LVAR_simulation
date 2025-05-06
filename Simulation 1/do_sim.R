@@ -13,15 +13,17 @@ do_sim <- function(pos, cond, outputfile, verbose = FALSE){
   replication <- cond$replication[pos]
   iteration <- cond$iteration[pos]
   # get condition levels and set seed:
-  n <- cond$n[pos]
-  obs <- cond$obs[pos]
-  invariance_level =  cond$invariance_level[pos] |> as.character()
-  direction =  cond$direction[pos] |> as.character()
+  invariance_level <- cond$invariance_level[pos] |> as.character()
+  pattern <- cond$pattern[pos] |> as.character()
+  ss_n <- cond$ss_n[pos]
+  ss_t <- cond$ss_t[pos]
+  ss_ratio = cond$ss_ratio[pos] |> as.character()
   seed_cond <- cond$seed[pos]
   set.seed(seed_cond)
   
   #### set data generation parameters ####
-  ## regression parameters:
+  ## structural parameters
+  ## regression coefficients:
   # group 1
   phi11_g1_pop <- .33
   phi22_g1_pop <- .37
@@ -42,7 +44,7 @@ do_sim <- function(pos, cond, outputfile, verbose = FALSE){
                         phi21_g2_pop, phi22_g2_pop),
                       ncol = 2, byrow = TRUE)
   
-  ## innovation variances
+  ## innovation variances:
   # total covariances are equal in both groups:
   psimat <- matrix(c(1, .3, .3, 1), ncol = 2)
   
@@ -56,58 +58,66 @@ do_sim <- function(pos, cond, outputfile, verbose = FALSE){
   zeta2_g2_pop <- zetamat_g2[2, 2]
   zeta12_g2_pop <- zetamat_g2[1, 2]
   
-  ## lambda matrix (loadings):
-  loadings_baseline <- c(.55, .55, .7, .4)
   
-  # loadings in group 1 are all equal to baseline:
-  lambda_g1 <- lavaan::lav_matrix_bdiag(list(loadings_baseline,
-                                             loadings_baseline))
+  ## measurement parameters:
+  # baseline:
+  loadings_g1 <- loadings_g2 <- c(.75, .75, .5, .5)
+  resvar_g1 <- 1-(loadings_g1^2)
+  resvar_g2 <- 1-(loadings_g2^2)
+  tau_g1 <- tau_g2 <- c(1, 1, 1, 1)
   
-  # loadings in group 2 are equal to group 1 unless modified by condition:
-  loadings_g2 <- loadings_baseline
-  if(invariance_level == "partial_metric"){
-    if(direction == "mixed"){
-      loadings_g2[3:4] <-  loadings_g2[4:3]
-    } else {
-      loadings_g2[3:4] <- loadings_g2[3:4] + .3
-    }
-  }
-  lambda_g2 <- lavaan::lav_matrix_bdiag(list(loadings_g2,
-                                             loadings_g2))
-  
-  ## theta matrix (residual variances):
-  resvar_baseline <- c(.5, .9, .51, .84)
-  
-  # residual variances in group 1 are all equal to baseline:
-  theta_g1 <- matrix(0, nrow = 8, ncol = 8)
-  diag(theta_g1) <- c(resvar_baseline, resvar_baseline)
-  
-  # residual variances in group 2 are equal to group 1 unless modified by condition:
-  resvar_g2 <- resvar_baseline
+  ## depending on condition, introduce differences in residual variances, intercepts, and loadings
+  # residual variances:
   if(invariance_level %in% c("full_scalar", "partial_scalar", "partial_metric")){
-    if(direction == "mixed"){
-      resvar_g2 <- resvar_g2[c(2, 1, 4, 3)]
-    } else {
-      resvar_g2 <- resvar_g2 - .4
+    if(pattern == "mixed"){
+      resvar_g1[c(1, 3)] <- resvar_g1[c(1, 3)] - .25
+      resvar_g1[c(2, 4)] <- resvar_g1[c(2, 4)] + .25
+      resvar_g2[c(1, 3)] <- resvar_g2[c(1, 3)] + .25
+      resvar_g2[c(2, 4)] <- resvar_g2[c(2, 4)] - .25
+    }
+    if(pattern == "unidirectional"){
+      resvar_g1 <- resvar_g1 - .25
+      resvar_g2 <- resvar_g2 + .25
     }
   }
+  
+  theta_g1 <- matrix(0, nrow = 8, ncol = 8)
+  diag(theta_g1) <- c(resvar_g1, resvar_g1)
   theta_g2 <- matrix(0, nrow = 8, ncol = 8)
   diag(theta_g2) <- c(resvar_g2, resvar_g2)
   
-  ##  intercepts
-  # intercepts are all 0 in group 1
-  tau_g1 <- c(1, 1, 0, 2, 1, 1, 0, 2)
-  
-  # intercepts in group 2 are equal to group 1 unless modified by condition:
-  tau_g2 <- tau_g1
-  
+  # intercepts:
   if(invariance_level %in% c("partial_scalar", "partial_metric")){
-    if(direction == "mixed"){
-      tau_g2[c(3, 4, 7, 8)] <- tau_g2[c(4, 3, 8, 7)]
-    } else {
-      tau_g2[c(3, 4, 7, 8)] <- tau_g2[c(3, 4, 7, 8)] + 1
+    if(pattern == "mixed"){
+      tau_g1[3] <-  tau_g1[3] + .5
+      tau_g1[4] <-  tau_g1[4] - .5
+      tau_g2[3] <-  tau_g2[3] - .5
+      tau_g2[4] <-  tau_g2[4] + .5
+    }
+    if(pattern == "unidirectional"){
+      tau_g1[3:4] <- tau_g1[3:4] + .5
+      tau_g2[3:4] <- tau_g2[3:4] - .5
     }
   }
+  tau_g1 <- c(tau_g1, tau_g1)
+  tau_g2 <- c(tau_g2, tau_g2)
+  
+  # loadings:
+  if(invariance_level == "partial_metric"){
+    if(pattern == "mixed"){
+      loadings_g1[3] <- loadings_g1[3] + .15
+      loadings_g1[4] <- loadings_g1[4] - .15
+      loadings_g2[3] <- loadings_g2[3] - .15
+      loadings_g2[4] <- loadings_g2[4] + .15
+    }
+    if(pattern == "unidirectional"){
+      loadings_g1[3:4] <- loadings_g1[3:4] + .15
+      loadings_g2[3:4] <- loadings_g2[3:4] - .15
+    }
+  }
+  lambda_g1 <- lavaan::lav_matrix_bdiag(list(loadings_g1, loadings_g1))
+  lambda_g2 <- lavaan::lav_matrix_bdiag(list(loadings_g2, loadings_g2))
+  
   
   #### generate items scores ####
   # create empty data frame:
@@ -124,9 +134,14 @@ do_sim <- function(pos, cond, outputfile, verbose = FALSE){
                      v8 = numeric())
   
   ## create group assignment vector
-  groupassignment <- c(rep("group1", n*0.5), rep("group2", n*0.5))
+  if(ss_ratio == "balanced"){
+    groupassignment <- c(rep("group1", ss_n*0.5), rep("group2", ss_n*0.5))
+  }
+  if(ss_ratio == "unbalanced"){
+    groupassignment <- c(rep("group1", ss_n*0.25), rep("group2", ss_n*0.75))
+  }
   
-  for(i in 1:n){
+  for(i in 1:ss_n){
     # create temporary dataframe:
     g <- groupassignment[i]
     
@@ -151,16 +166,16 @@ do_sim <- function(pos, cond, outputfile, verbose = FALSE){
     }
     
     # generate factor scores:
-    eta_i <- sim_VAR(factors = 2, obs = obs,
+    eta_i <- sim_VAR(factors = 2, obs = ss_t,
                      phi = phimat_i, zeta = zetamat_i,
                      mu = mu_i,
                      burn_in = 20)
     
     # generate errors:
-    epsilon_i <- mvrnorm(obs, mu = rep(0, 8),
+    epsilon_i <- mvrnorm(ss_t, mu = rep(0, 8),
                          Sigma = theta_i, empirical=T)
     
-    tau_matrix <- rep(tau_i, each = obs) |> matrix(nrow = obs)
+    tau_matrix <- rep(tau_i, each = ss_t) |> matrix(nrow = ss_t)
     
     # transform factor scores into observed scores:
     data_i <- as.matrix(eta_i[, c("eta1", "eta2")]) %*% t(lambda_i) + tau_matrix + epsilon_i |>
@@ -178,10 +193,10 @@ do_sim <- function(pos, cond, outputfile, verbose = FALSE){
   
   start <- Sys.time()
   model_step1 <- list(
-    "f1 =~ 0.55*v1 + v2 + v3 + v4
+    "f1 =~ 0.75*v1 + v2 + v3 + v4
       v1 ~ 1*1
       f1 ~ NA*1",
-    "f2 =~ 0.55*v5 + v6 + v7 + v8
+    "f2 =~ 0.75*v5 + v6 + v7 + v8
       v5 ~ 1*1
       f2 ~ NA*1")
   
@@ -485,12 +500,10 @@ do_sim <- function(pos, cond, outputfile, verbose = FALSE){
     
     theta_ests <- output_step2_multi$result$result$MMparameters$theta_group
     theta_ests <- do.call(rbind, lapply(theta_ests, diag))
-    theta_ests <- theta_ests[, c(3, 4, 7, 8)]
-    theta_true <- matrix(c(diag(theta_g1)[c(3, 4, 7, 8)],
-                           diag(theta_g2)[c(3, 4, 7, 8)]),
+    theta_true <- matrix(c(diag(theta_g1), diag(theta_g2)),
                          nrow = 2, byrow = TRUE)
-    bias_theta <- sum(theta_true - theta_ests)/(4*2)  |> as.numeric()
-    RMSE_theta <- sqrt(sum((theta_true - theta_ests)^2)/(4*2)) |> as.numeric()
+    bias_theta <- sum(theta_true - theta_ests)/(8*2)  |> as.numeric()
+    RMSE_theta <- sqrt(sum((theta_true - theta_ests)^2)/(8*2)) |> as.numeric()
     
     tau_ests <- output_step2_multi$result$result$MMparameters$tau_group
     tau_ests <- do.call(rbind, lapply(tau_ests, function(x){c(x[3:4, 1], x[7:8, 2])}))
@@ -546,9 +559,8 @@ do_sim <- function(pos, cond, outputfile, verbose = FALSE){
   duration <- difftime(Sys.time(), start, units = "secs") |> as.numeric()
   
   output <- c("iteration" = iteration, "replication" = replication,
-              "n" = n, "obs" = obs,
-              "invariance_level" = invariance_level,
-              "direction" = direction,
+              "invariance_level" = invariance_level, "pattern" = pattern,
+              "ss_n" = ss_n, "ss_t" = ss_t, "ss_ratio" = ss_ratio,
               "duration" = duration,
               "phi11_g1_pop" = phi11_g1_pop, "phi12_g1_pop" = phi12_g1_pop, "phi21_g1_pop" = phi21_g1_pop, "phi22_g1_pop" = phi22_g1_pop,
               "phi11_g2_pop" = phi11_g2_pop, "phi12_g2_pop" = phi12_g2_pop, "phi21_g2_pop" = phi21_g2_pop, "phi22_g2_pop" = phi22_g2_pop,
@@ -582,7 +594,7 @@ do_sim <- function(pos, cond, outputfile, verbose = FALSE){
               "step1_multi_warning_text" = step1_multi_warning_text, "step2_multi_warning_text" = step2_multi_warning_text, "step3_multi_warning_text" = step3_multi_warning_text,
               "step1_multi_error_text" = step1_multi_error_text, "step2_multi_error_text" = step2_multi_error_text, "step3_multi_error_text" = step3_multi_error_text)
   
-  for(i in 98:109){
+  for(i in 97:108){
     output[i] <- str_squish(output[i])                                          # removes all whitespace and linebreaks from the error and warning strings
     output[i] <- gsub(",", "", output[i])                                       # removes all commata from error and warning strings (to prevent messing up the CSV file)
   }
