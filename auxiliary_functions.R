@@ -15,21 +15,19 @@ sim_VAR <- function(factors, obs, phi, zeta, mu, burn_in = 0){
   data <- as.data.frame(matrix(NA, nrow = burn_in + obs, ncol = factors))
   names(data) <- paste0("eta", 1:factors)
   
-  intercept <- (diag(factors) - phi) %*% mu
-  
-  totalvar <- solve(diag(factors*factors) - kronecker(phi,phi)) %*% c(zeta) |> matrix(ncol = factors)
+  innovations <- MASS::mvrnorm(n = nrow(data), mu = rep(0, factors), Sigma = zeta, empirical = TRUE)
   
   for(i in 1:nrow(data)){
-    # simulate the first observation from the person's starting point (= intercept)
+    # simulate the first observation only from the innovation
     if(i == 1){
-      data[i,] <- MASS::mvrnorm(n = 1, mu = mu, Sigma = totalvar)
+      delta <- innovations[i,]
     }
     
-    # then loop through all the rows, predict the current observation from the previous observations, then add random innovation
+    # then loop through all the rows, predict the current temporal deviation from the previous deviation, then add random innovation
     if(i > 1){
-      predicted <- intercept + phi %*% unlist(data[i-1,])
-      data[i, ] <- MASS::mvrnorm(n = 1, mu = predicted, Sigma = zeta)
+      delta <- phi %*% delta + innovations[i,]
     }
+    data[i,] <- mu + delta
   }
   
   # remove the first rows, depending on length of burn in

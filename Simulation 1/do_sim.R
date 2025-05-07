@@ -7,7 +7,12 @@ do_sim <- function(pos, cond, outputfile, verbose = FALSE){
   # verbose = if TRUE, prints a message after the iteration is finished
   
   #### for testing:
-  #pos = 1
+  # pos = 1
+  # invariance_level <- "partial_metric"
+  # pattern = "unidirectional"
+  # ss_n = 100
+  # ss_t = 40
+  # ss_ratio = "balanced"
 
   
   replication <- cond$replication[pos]
@@ -81,10 +86,8 @@ do_sim <- function(pos, cond, outputfile, verbose = FALSE){
     }
   }
   
-  theta_g1 <- matrix(0, nrow = 8, ncol = 8)
-  diag(theta_g1) <- c(resvar_g1, resvar_g1)
-  theta_g2 <- matrix(0, nrow = 8, ncol = 8)
-  diag(theta_g2) <- c(resvar_g2, resvar_g2)
+  theta_g1 <- diag(c(resvar_g1, resvar_g1))
+  theta_g2 <- diag(c(resvar_g2, resvar_g2))
   
   # intercepts:
   if(invariance_level %in% c("partial_scalar", "partial_metric")){
@@ -119,8 +122,27 @@ do_sim <- function(pos, cond, outputfile, verbose = FALSE){
   lambda_g2 <- lavaan::lav_matrix_bdiag(list(loadings_g2, loadings_g2))
   
   
-  #### generate items scores ####
-  # create empty data frame:
+  ## calculate population reliability:
+  sigma_g1 <- lambda_g1 %*% psimat %*% t(lambda_g1) + theta_g1
+  sigma_g2 <- lambda_g2 %*% psimat %*% t(lambda_g2) + theta_g2
+  lambdastar_g1_pop <- diag(psimat %*% t(lambda_g1) %*% solve(sigma_g1) %*% lambda_g1)
+  lambdastar_g2_pop <- diag(psimat %*% t(lambda_g2) %*% solve(sigma_g2) %*% lambda_g2)
+  lambdastar_f1_g1_pop <- lambdastar_g1_pop[1]
+  lambdastar_f2_g1_pop <- lambdastar_g1_pop[2]
+  lambdastar_f1_g2_pop <- lambdastar_g2_pop[1]
+  lambdastar_f2_g2_pop <- lambdastar_g2_pop[2]
+  
+  #### generate observed items scores ####
+  # sample size per group
+  if(ss_ratio == "balanced"){
+    n1 <- n2 <- ss_n*0.5
+  }
+  if(ss_ratio == "unbalanced"){
+    n1 <- ss_n*0.25
+    n2 <- ss_n*0.75
+  }
+  
+  # create empty data frame for all (observed) items
   data <- data.frame(id = numeric(),
                      obs = numeric(),
                      group = character(),
@@ -133,62 +155,61 @@ do_sim <- function(pos, cond, outputfile, verbose = FALSE){
                      v7 = numeric(),
                      v8 = numeric())
   
-  ## create group assignment vector
-  if(ss_ratio == "balanced"){
-    groupassignment <- c(rep("group1", ss_n*0.5), rep("group2", ss_n*0.5))
-  }
-  if(ss_ratio == "unbalanced"){
-    groupassignment <- c(rep("group1", ss_n*0.25), rep("group2", ss_n*0.75))
-  }
-  
-  for(i in 1:ss_n){
-    # create temporary dataframe:
-    g <- groupassignment[i]
+  ## generate factor scores and the observed items per group:
+  for(g in c("group1", "group2")){
+    # create empty data frame for group's factor scores:
+    eta_g <- data.frame(id = numeric(),
+                        obs = numeric(),
+                        eta1 = numeric(),
+                        eta2 = numeric())
     
     # get correct SM and MM parameters:
     if(g == "group1"){
-      phimat_i <- phimat_g1
-      zetamat_i <- zetamat_g1
-      lambda_i <- lambda_g1
-      theta_i <- theta_g1
-      tau_i <- tau_g1
-      mu_i <- c(rnorm(1, 3.09, 1),
-                rnorm(1, .98, 1))
+      ids_g <- 1:n1
+      phimat_g <- phimat_g1
+      zetamat_g <- zetamat_g1
+      mu_g <- c(3.09, .98)
+      lambda_g <- lambda_g1
+      theta_g <- theta_g1
+      tau_g <- tau_g1
+    } else {
+      ids_g <- (1:n2)+n1
+      phimat_g <- phimat_g2
+      zetamat_g <- zetamat_g2
+      mu_g <- c(4.56, .32)
+      lambda_g <- lambda_g2
+      theta_g <- theta_g2
+      tau_g <- tau_g2
     }
-    if(g == "group2"){
-      phimat_i <- phimat_g2
-      zetamat_i <- zetamat_g2
-      lambda_i <- lambda_g2
-      theta_i <- theta_g2
-      tau_i <- tau_g2
-      mu_i <- c(rnorm(1, 4.56, 1),
-                rnorm(1, .32, 1))
+    for(i in ids_g){
+      # generate person-specific latent means:
+      mu_i <- c(rnorm(1, mu_g[1], 1),
+                rnorm(1, mu_g[2], 1))
+      
+      # generate time series data (factor scores) for individual:
+      eta_i <- sim_VAR(factors = 2, obs = ss_t,
+                       phi = phimat_g, zeta = zetamat_g,
+                       mu = mu_i,
+                       burn_in = 0)
+      
+      eta_i$id <- i
+      # merge with group's factor score data frame:
+      eta_g <- dplyr::full_join(eta_g, eta_i, by = join_by(id, obs, eta1, eta2))
     }
     
-    # generate factor scores:
-    eta_i <- sim_VAR(factors = 2, obs = ss_t,
-                     phi = phimat_i, zeta = zetamat_i,
-                     mu = mu_i,
-                     burn_in = 20)
-    
-    # generate errors:
-    epsilon_i <- mvrnorm(ss_t, mu = rep(0, 8),
-                         Sigma = theta_i, empirical=T)
-    
-    tau_matrix <- rep(tau_i, each = ss_t) |> matrix(nrow = ss_t)
-    
-    # transform factor scores into observed scores:
-    data_i <- as.matrix(eta_i[, c("eta1", "eta2")]) %*% t(lambda_i) + tau_matrix + epsilon_i |>
+    # generate errors (item residuals):
+    epsilon_g <- mvrnorm(nrow(eta_g), mu = rep(0, 8),
+                       Sigma = theta_g, empirical=T)
+    # transform factor scores into group's observed scores:
+    data_g <- t(tau_g + lambda_g %*% t(eta_g[, c("eta1", "eta2")])) + epsilon_g |>
       as.data.frame()
-    colnames(data_i) <- paste0("v", 1:8)
+    colnames(data_g) <- paste0("v", 1:8)
+    data_g$id <- eta_g$id
+    data_g$obs <- eta_g$obs
+    data_g$group <- g
     
-    # add id and true cluster variable:
-    data_i$id <- i
-    data_i$group <- g
-    data_i$obs <- eta_i$obs
-    
-    # merge with full data
-    data <- dplyr::full_join(data, data_i, by = join_by(id, obs, group, v1, v2, v3, v4, v5, v6, v7, v8))
+    # merge group's observed items with full data frame:
+    data <- dplyr::full_join(data, data_g, by = join_by(id, obs, group, v1, v2, v3, v4, v5, v6, v7, v8))
   }
   
   start <- Sys.time()
@@ -204,8 +225,7 @@ do_sim <- function(pos, cond, outputfile, verbose = FALSE){
   #### Step 1 ####
   output_step1_single <- run_step1(data = data,
                                    measurementmodel = model_step1,
-                                   group = NULL,
-                                   bounds = "wide")
+                                   group = NULL)
   
   # extract error/warning messages (if applicable):
   step1_single_warning <- ifelse(is_empty(output_step1_single$warnings),
@@ -379,8 +399,7 @@ do_sim <- function(pos, cond, outputfile, verbose = FALSE){
                                   measurementmodel = model_step1,
                                   group = "group",
                                   invariances = invariances,
-                                  partial_noninvariances = partial_noninvariances,
-                                  bounds = "wide")
+                                  partial_noninvariances = partial_noninvariances)
   
   # extract error/warning messages (if applicable):
   step1_multi_warning <- ifelse(is_empty(output_step1_multi$warnings),
@@ -490,27 +509,32 @@ do_sim <- function(pos, cond, outputfile, verbose = FALSE){
     multi_zeta2_g2_se <- standarderrors["zeta2_group2"] |> as.numeric()
     multi_zeta12_g2_se <- standarderrors["zeta12_group2"] |> as.numeric()
     
+    lambdastar_f1_g1 <- output_step2_multi$result$result$lambda_star[1, 1]
+    lambdastar_f2_g1 <- output_step2_multi$result$result$lambda_star[1, 2]
+    lambdastar_f1_g2 <- output_step2_multi$result$result$lambda_star[2, 1]
+    lambdastar_f2_g2 <- output_step2_multi$result$result$lambda_star[2, 2]
+    
     lambda_ests <- output_step2_multi$result$result$MMparameters$lambda_group
     lambda_ests <- do.call(rbind, lapply(lambda_ests, function(x){c(x[3:4, 1], x[7:8, 2])}))
     lambda_true <- matrix(c(lambda_g1[3:4, 1], lambda_g1[7:8, 2], 
                             lambda_g2[3:4, 1], lambda_g2[7:8, 2]),
                           nrow = 2, byrow = TRUE)
-    bias_lambda <- sum(lambda_true - lambda_ests)/(4*2)  |> as.numeric()
-    RMSE_lambda <- sqrt(sum((lambda_true - lambda_ests)^2)/(4*2)) |> as.numeric()
+    bias_lambda <- sum(lambda_ests - lambda_true)/(4*2)  |> as.numeric()
+    RMSE_lambda <- sqrt(sum((lambda_ests - lambda_true)^2)/(4*2)) |> as.numeric()
     
     theta_ests <- output_step2_multi$result$result$MMparameters$theta_group
     theta_ests <- do.call(rbind, lapply(theta_ests, diag))
     theta_true <- matrix(c(diag(theta_g1), diag(theta_g2)),
                          nrow = 2, byrow = TRUE)
-    bias_theta <- sum(theta_true - theta_ests)/(8*2)  |> as.numeric()
-    RMSE_theta <- sqrt(sum((theta_true - theta_ests)^2)/(8*2)) |> as.numeric()
+    bias_theta <- sum(theta_ests - theta_true)/(8*2)  |> as.numeric()
+    RMSE_theta <- sqrt(sum((theta_ests - theta_true)^2)/(8*2)) |> as.numeric()
     
     tau_ests <- output_step2_multi$result$result$MMparameters$tau_group
     tau_ests <- do.call(rbind, lapply(tau_ests, function(x){c(x[3:4, 1], x[7:8, 2])}))
     tau_true <- matrix(c(tau_g1[c(3, 4, 7, 8)], tau_g2[c(3, 4, 7, 8)]),
                       nrow = 2, byrow = TRUE)
-    bias_tau <- sum(tau_true - tau_ests)/(4*2)  |> as.numeric()
-    RMSE_tau <- sqrt(sum((tau_true - tau_ests)^2)/(4*2)) |> as.numeric()
+    bias_tau <- sum(tau_ests - tau_true)/(4*2)  |> as.numeric()
+    RMSE_tau <- sqrt(sum((tau_ests - tau_true)^2)/(4*2)) |> as.numeric()
   } else {
     multi_phi11_g1 <- NA
     multi_phi22_g1 <- NA
@@ -548,6 +572,11 @@ do_sim <- function(pos, cond, outputfile, verbose = FALSE){
     multi_zeta2_g2_se <- NA
     multi_zeta12_g2_se <- NA
     
+    lambdastar_f1_g1 <- NA
+    lambdastar_f2_g1 <- NA
+    lambdastar_f1_g2 <- NA
+    lambdastar_f2_g2 <- NA
+    
     bias_lambda <- NA
     RMSE_lambda <- NA
     bias_theta <- NA
@@ -582,6 +611,10 @@ do_sim <- function(pos, cond, outputfile, verbose = FALSE){
               "multi_phi11_g2_se" = multi_phi11_g2_se, "multi_phi12_g2_se" = multi_phi12_g2_se, "multi_phi21_g2_se" = multi_phi21_g2_se, "multi_phi22_g2_se" = multi_phi22_g2_se,
               "multi_zeta1_g1_se" = multi_zeta1_g1_se, "multi_zeta2_g1_se" = multi_zeta2_g1_se, "multi_zeta12_g1_se" = multi_zeta12_g1_se,
               "multi_zeta1_g2_se" = multi_zeta1_g2_se, "multi_zeta2_g2_se" = multi_zeta2_g2_se, "multi_zeta12_g2_se" = multi_zeta12_g2_se,
+              "lambdastar_f1_g1_pop" = lambdastar_f1_g1_pop, "lambdastar_f2_g1_pop" = lambdastar_f2_g1_pop,
+              "lambdastar_f1_g2_pop" = lambdastar_f1_g2_pop, "lambdastar_f2_g2_pop" = lambdastar_f2_g2_pop,
+              "lambdastar_f1_g1" = lambdastar_f1_g1, "lambdastar_f2_g1" =  lambdastar_f2_g1,
+              "lambdastar_f1_g2" = lambdastar_f1_g2, "lambdastar_f2_g2" =  lambdastar_f2_g2,
               "bias_lambda" = bias_lambda, "bias_theta" = bias_theta, "bias_tau" = bias_tau,
               "RMSE_lambda" = RMSE_lambda, "RMSE_theta" = RMSE_theta, "RMSE_tau" = RMSE_tau,
               "step1_single_warning" = step1_single_warning, "step2_single_warning" = step2_single_warning, "step3_single_warning" = step3_single_warning,
@@ -594,7 +627,7 @@ do_sim <- function(pos, cond, outputfile, verbose = FALSE){
               "step1_multi_warning_text" = step1_multi_warning_text, "step2_multi_warning_text" = step2_multi_warning_text, "step3_multi_warning_text" = step3_multi_warning_text,
               "step1_multi_error_text" = step1_multi_error_text, "step2_multi_error_text" = step2_multi_error_text, "step3_multi_error_text" = step3_multi_error_text)
   
-  for(i in 97:108){
+  for(i in 107:118){
     output[i] <- str_squish(output[i])                                          # removes all whitespace and linebreaks from the error and warning strings
     output[i] <- gsub(",", "", output[i])                                       # removes all commata from error and warning strings (to prevent messing up the CSV file)
   }
