@@ -2,12 +2,6 @@ step3 <- function(step2output, id, step3group = NULL){
   # step2output:
   #   the object that was generated using the step2() function
   # ...
-  
-  
-  # #### FOR TESTING ####
-  # step2output = output_step2$result$result
-  # id = "id"
-  # step3group = "group"
 
   #### 1) Preparations ####
   ## extract objects from step 1 output:
