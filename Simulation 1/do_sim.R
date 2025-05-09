@@ -242,6 +242,33 @@ do_sim <- function(pos, cond, outputfile, verbose = FALSE){
                                     paste(c(output_step1_single$result$error),
                                           collapse = "; "))
   
+  # check whether the solution is admissible:
+  if(grepl("variances are negative", step1_single_warning_text, ignore.case = TRUE)) {
+    # Re-run step 1 with wide bounds in case there's a heywood case
+    output_step1_single <- run_step1(data = data,
+                                     measurementmodel = model_step1,
+                                     group = NULL,
+                                     bounds = "wide")
+    
+    # extract error/warning messages (if applicable):
+    step1_single_warning <- ifelse(is_empty(output_step1_single$warnings),
+                                   FALSE, TRUE)
+    step1_single_warning_text <- ifelse(is_empty(output_step1_single$warnings),
+                                        "",
+                                        paste(c(output_step1_single$warnings),
+                                              collapse = "; ")
+    )
+    step1_single_error <- ifelse(is_empty(output_step1_single$result$error),
+                                 FALSE, TRUE)
+    step1_single_error_text <- ifelse(is_empty(output_step1_single$result$error),
+                                      "",
+                                      paste(c(output_step1_single$result$error),
+                                            collapse = "; "))
+    rerun_step1 <- TRUE
+  } else {
+    rerun_step1 <- FALSE
+  }
+  
   #### Step 2 ####
   if(!step1_single_error){                                                             # only proceed if there is no error in step 1
     output_step2_single <- run_step2(step1output = output_step1_single$result$result)
@@ -287,6 +314,12 @@ do_sim <- function(pos, cond, outputfile, verbose = FALSE){
                                       paste(c(output_step3_single$result$error),
                                             collapse = "; ")
     )
+    
+    # check if the model converged:
+    if(output_step3_single$result$result$model@output$status$code != 0){
+      step3_single_error <- TRUE
+      step3_single_error_text <- "step3 model estimation failed"
+    }
   } else {
     step3_single_warning <- FALSE
     step3_single_warning_text <- "step1 or step2 not successful"
@@ -461,6 +494,14 @@ do_sim <- function(pos, cond, outputfile, verbose = FALSE){
                                      paste(c(output_step3_multi$result$error),
                                            collapse = "; ")
     )
+    
+    # check if the model converged:
+    if(output_step3_multi$result$result$model@output$status$code != 0){
+      step3_multi_error <- TRUE
+      step3_multi_error_text <- "step3 model estimation failed"
+    }
+    
+    
   } else {
     step3_multi_warning <- FALSE
     step3_multi_warning_text <- "step1 or step2 not successful"
@@ -619,6 +660,7 @@ do_sim <- function(pos, cond, outputfile, verbose = FALSE){
               "RMSE_lambda" = RMSE_lambda, "RMSE_theta" = RMSE_theta, "RMSE_tau" = RMSE_tau,
               "step1_single_warning" = step1_single_warning, "step2_single_warning" = step2_single_warning, "step3_single_warning" = step3_single_warning,
               "step1_single_error" = step1_single_error, "step2_single_error" = step2_single_error, "step3_single_error" = step3_single_error,
+              "rerun_step1" = rerun_step1,
               "step1_multi_warning" = step1_multi_warning, "step2_multi_warning" = step2_multi_warning, "step3_multi_warning" = step3_multi_warning,
               "step1_multi_error" = step1_multi_error, "step2_multi_error" = step2_multi_error, "step3_multi_error" = step3_multi_error,
               "seed" = seed_cond, "pos" = pos,
@@ -627,7 +669,7 @@ do_sim <- function(pos, cond, outputfile, verbose = FALSE){
               "step1_multi_warning_text" = step1_multi_warning_text, "step2_multi_warning_text" = step2_multi_warning_text, "step3_multi_warning_text" = step3_multi_warning_text,
               "step1_multi_error_text" = step1_multi_error_text, "step2_multi_error_text" = step2_multi_error_text, "step3_multi_error_text" = step3_multi_error_text)
   
-  for(i in 107:118){
+  for(i in 108:119){
     output[i] <- str_squish(output[i])                                          # removes all whitespace and linebreaks from the error and warning strings
     output[i] <- gsub(",", "", output[i])                                       # removes all commata from error and warning strings (to prevent messing up the CSV file)
   }
