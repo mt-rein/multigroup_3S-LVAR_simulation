@@ -13,6 +13,10 @@ step3 <- function(step2output, id, step3group = NULL){
   step1group <- step2output$other$step1group                                    # name of the grouping variable in step1
   unique_ids <- unique(data[, id])                                              # vector of unique ids
   N <- length(unique_ids)
+  if(!purrr::is_empty(step1group)){
+    groupnames <- unique(data[, step1group])
+  }
+  
 
   #### 2) data manipulation ####
   ## rename the factor score variables in the data
@@ -80,22 +84,17 @@ step3 <- function(step2output, id, step3group = NULL){
                    byrow = TRUE)
   
   
-  # x0 and P0 (= initial values and (co)variances of the latent constructs)
-  xmat <- mxMatrix('Full', nrow = xdim, ncol = 1,
-                   name='x0',
-                   free = FALSE,
-                   values = c(0, 0, 0, 0))
-  
+  # P0 (= (co)variances of the latent constructs)
   pmat <- mxMatrix('Symm', nrow = xdim, ncol = xdim,
                    name='P0',
                    free = c(TRUE,
                             TRUE, TRUE,
                             FALSE, FALSE, TRUE,
                             FALSE, FALSE, FALSE, TRUE),
-                   values = c(1e1,
-                              1e1, 1e1,
-                              0, 0, 1e1,
-                              0, 0, 0, 1e1),
+                   values = c(1e2,
+                              1e1, 1e2,
+                              0, 0, 1e2,
+                              0, 0, 0, 1e2),
                    labels = c("P0_f1",
                               "P0_f1f2", "P0_f2",
                               NA, NA, "P0_icp1",
@@ -107,23 +106,24 @@ step3 <- function(step2output, id, step3group = NULL){
                    name = 'u')
   
   #### 4) create OpenMx models ####
-  ## if there is no grouping variable in step3:
-  if(purrr::is_empty(step3group)){
-    # create a list of models (one for each individual) for each latent class:
-    personmodelnames <- paste0("id_", unique_ids)
-    names(personmodelnames) <- unique_ids
-    
-    personmodel_list <- vector(mode = "list", length = N)
-    for(i in unique_ids){
-      # which step1 group (if any) does the individual belong to?
+  # create a list of models (one for each individual) for each latent class:
+  personmodelnames <- paste0("id_", unique_ids)
+  names(personmodelnames) <- unique_ids
+  
+  personmodel_list <- vector(mode = "list", length = N)
+  # create the person-models:
+  for(g in unique(data[, step3group])){
+    group_ids <- unique(data$id[data[, step3group] == g])
+    for(i in group_ids){
       if(!purrr::is_empty(step1group)){
         s1g <- data[data$id == i, step1group] |> unique()
+        alphas <- step2output$MMparameters$alpha_group[[which(groupnames == s1g)]] |> diag()
       } else {
         s1g <- 1
+        alphas <- step2output$MMparameters$alpha_group |> diag()
       }
       
-      # fix the loadings to lambda_star (potentially depending on step1 group)
-      # C matrix
+      # C matrix (= factor loadings, here fixed to lambda_star)
       cmat <- mxMatrix('Full', nrow = ydim, ncol = xdim,
                        name='C',
                        free = FALSE,
@@ -136,8 +136,7 @@ step3 <- function(step2output, id, step3group = NULL){
                        )
       )
       
-      # fix the residual variances to theta_star (potentially depending on step 1 group)
-      # R matrix (= measurement noise)
+      # R matrix (= measurement noise, here fixed to theta_star)
       rmat <- mxMatrix('Diag', nrow = ydim, ncol = ydim,
                        name = 'R',
                        free = FALSE,
@@ -145,101 +144,41 @@ step3 <- function(step2output, id, step3group = NULL){
                        labels = NA
       )
       
-      # create the model
+      # x0 (= initial values of the latent constructs)
+      xmat <- mxMatrix('Full', nrow = xdim, ncol = 1,
+                       name='x0',
+                       free = c(FALSE, FALSE, FALSE, FALSE),
+                       values = c(0, 0, alphas))
+      
       modelname <- personmodelnames[i]  |> as.character()
-      personmodel_list[[i]] <- mxModel(name = modelname,
-                                       amat, bmat, cmat, dmat,
-                                       qmat, rmat, xmat, pmat, 
-                                       umat,
-                                       mxExpectationStateSpace('A', 'B', 'C', 'D', 
-                                                               'Q', 'R', 'x0', 'P0', 
-                                                               'u'),
-                                       mxFitFunctionML(),
-                                       mxData(data[data$id == i, c(factors_ind)], 
-                                              'raw'))
+      temp_model <- mxModel(name = modelname,
+                            amat, bmat, cmat, dmat,
+                            qmat, rmat, xmat, pmat,
+                            umat,
+                            mxExpectationStateSpace('A', 'B', 'C', 'D',
+                                                    'Q', 'R', 'x0', 'P0',
+                                                    'u'),
+                            mxFitFunctionML(),
+                            mxData(data[data[, id] == i, c(factors_ind)],
+                                   'raw'))
+      temp_model <- omxSetParameters(temp_model,
+                                     labels = names(coef(temp_model)),
+                                     newlabels = paste0(names(coef(temp_model)),
+                                                        "_", g))
+      personmodel_list[[i]] <- temp_model
     }
-    names(personmodel_list) <- personmodelnames
-    
-    # combine the person-models to a multi-subject model
-    fullmodel <- mxModel("fullmodel",
-                         personmodel_list,
-                         mxFitFunctionMultigroup(personmodelnames))
-    
-    # generate starting values:
-    fullmodel <- generate_startval(fullmodel)
-    
-    # fit the model
-    fullmodelr <- mxTryHard(fullmodel)
   }
+  names(personmodel_list) <- personmodelnames
   
-  ## if there is a grouping variable in step 3
-  if(!purrr::is_empty(step3group)){
-    # create a list of models (one for each individual) for each latent class:
-    personmodelnames <- paste0("id_", unique_ids)
-    names(personmodelnames) <- unique_ids
-    
-    personmodel_list <- vector(mode = "list", length = N)
-    # create the person-models:
-    for(g in unique(data[, step3group])){
-      group_ids <- unique(data$id[data[, step3group] == g])
-      for(i in group_ids){
-        if(!purrr::is_empty(step1group)){
-          s1g <- data[data$id == i, step1group] |> unique()
-        } else {
-          s1g <- 1
-        }
-        
-        # C matrix (= factor loadings, here fixed to lambda_star)
-        cmat <- mxMatrix('Full', nrow = ydim, ncol = xdim,
-                         name='C',
-                         free = FALSE,
-                         values = c(lambda_star[s1g, 1], 0, lambda_star[s1g, 1], 0,
-                                    0, lambda_star[s1g, 2], 0, lambda_star[s1g, 2]),
-                         labels = NA,
-                         byrow = TRUE,
-                         dimnames = list(factors_ind, c(paste0(factors),
-                                                        paste0("intercept_", factors))
-                         )
-        )
-        
-        # R matrix (= measurement noise, here fixed to theta_star)
-        rmat <- mxMatrix('Diag', nrow = ydim, ncol = ydim,
-                         name = 'R',
-                         free = FALSE,
-                         values = theta_star[s1g, ],
-                         labels = NA
-        )
-        
-        modelname <- personmodelnames[i]  |> as.character()
-        temp_model <- mxModel(name = modelname,
-                              amat, bmat, cmat, dmat,
-                              qmat, rmat, xmat, pmat,
-                              umat,
-                              mxExpectationStateSpace('A', 'B', 'C', 'D',
-                                                      'Q', 'R', 'x0', 'P0',
-                                                      'u'),
-                              mxFitFunctionML(),
-                              mxData(data[data[, id] == i, c(factors_ind)],
-                                     'raw'))
-        temp_model <- omxSetParameters(temp_model,
-                                       labels = names(coef(temp_model)),
-                                       newlabels = paste0(names(coef(temp_model)),
-                                                          "_", g))
-        personmodel_list[[i]] <- temp_model
-      }
-    }
-    names(personmodel_list) <- personmodelnames
-    
-    # combine the person-models to a multi-subject model
-    fullmodel <- mxModel("fullmodel", personmodel_list,
-                         mxFitFunctionMultigroup(personmodelnames))
-    
-    # generate starting values:
-    fullmodel <- generate_startval(fullmodel)
-    
-    # fit the model
-    fullmodelr <- mxTryHard(fullmodel)
-  }
+  # combine the person-models to a multi-subject model
+  fullmodel <- mxModel("fullmodel", personmodel_list,
+                       mxFitFunctionMultigroup(personmodelnames))
+  
+  # generate starting values:
+  fullmodel <- generate_startval(fullmodel)
+  
+  # fit the model
+  fullmodelr <- mxTryHard(fullmodel)
   
   #### 7) build the output ####
   estimates <- coef(fullmodelr)

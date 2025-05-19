@@ -22,21 +22,12 @@ step2 <- function(step1output){
   
   
   #### compute factor scores ####
-  # Are there measurement blocks?
-  if(is.list(measurementmodel)){
-    for(m in 1:M){
-      # if there are measurement blocks, compute factor scores in each block
-      temp <- lavPredict(fit_step1[[m]], assemble = TRUE, append.data = TRUE) |> 
-        as.data.frame()
-      # and append to original data
-      data <- dplyr::full_join(data, temp, by = c(group, indicators[indicators %in% colnames(temp)]))
-    }
-  } else {
-    # if there are no measurement blocks, compute factor scores for all latent 
-    # variables simultaneously and append to data
-    temp <- lavPredict(fit_step1, assemble = TRUE, append.data = TRUE) |> 
+  for(m in 1:M){
+    # if there are measurement blocks, compute factor scores in each block
+    temp <- lavPredict(fit_step1[[m]], assemble = TRUE, append.data = TRUE) |> 
       as.data.frame()
-    data <- dplyr::full_join(data, temp, by = c(group, indicators))
+    # and append to original data
+    data <- dplyr::full_join(data, temp, by = c(group, indicators[indicators %in% colnames(temp)]))
   }
   
   #### compute lambda_star and theta_star (no grouping variable) ####
@@ -50,40 +41,36 @@ step2 <- function(step1output){
     colnames(lambda_star) <- colnames(theta_star) <- factors
     
     # Are there measurement blocks?
-    if(is.list(measurementmodel)){
-      # if yes, create lists to store MM parameter values per block
-      # (lists with M elements)
-      psi_block <- lambda_block <- theta_block <- tau_block <- vector(mode = "list", length = M)
-      for(m in 1:M){
-        EST_block         <- lavaan::lavInspect(fit_step1[[m]], "est")
-        psi_block[[m]] <- EST_block[["psi"]]
-        lambda_block[[m]] <- EST_block[["lambda"]]
-        theta_block[[m]]  <- EST_block[["theta"]]
-        tau_block[[m]]  <- EST_block[["nu"]]
-      }
-      
-      # combine the matrices of the different measurement blocks into a single matrix
-      psi_group <- lavaan::lav_matrix_bdiag(psi_block)
-      lambda_group <- lavaan::lav_matrix_bdiag(lambda_block)
-      theta_group  <- lavaan::lav_matrix_bdiag(theta_block)
-      tau_group  <- lavaan::lav_matrix_bdiag(tau_block)
-      
-      # name the matrices' rows and columns
-      rownames(psi_group) <- colnames(psi_group) <- factors
-      rownames(lambda_group) <- indicators
-      colnames(lambda_group) <- factors
-      rownames(theta_group) <- colnames(theta_group) <- indicators
-      rownames(tau_group) <- indicators
-      colnames(tau_group) <- factors
-      
-    } else {
-      # if there are no measurement blocks, simply extract the MM parameters
-      psi_group <- lambda_group <- theta_group <-  vector(mode = "list", length = G)
-      psi_group <- lavaan::lavInspect(fit_step1, "est")$psi
-      lambda_group <- lavaan::lavInspect(fit_step1, "est")$lambda
-      theta_group <- lavaan::lavInspect(fit_step1, "est")$theta
-      tau_group <- lavaan::lavInspect(fit_step1, "est")$nu
+    # create lists to store MM parameter values per block
+    # (lists with M elements)
+    psi_block <- alpha_block <- lambda_block <- theta_block <- tau_block <- vector(mode = "list", length = M)
+    for(m in 1:M){
+      EST_block         <- lavaan::lavInspect(fit_step1[[m]], "est")
+      psi_block[[m]] <- EST_block[["psi"]]
+      alpha_block[[m]] <- EST_block[["alpha"]]
+      lambda_block[[m]] <- EST_block[["lambda"]]
+      theta_block[[m]]  <- EST_block[["theta"]]
+      tau_block[[m]]  <- EST_block[["nu"]]
     }
+    
+    # combine the matrices of the different measurement blocks into a single matrix
+    psi_group <- lavaan::lav_matrix_bdiag(psi_block)
+    alpha_group <- diag(length(factors))
+    for(f in 1:length(factors)){
+      alpha_group[f, f] <- alpha_block[[f]]
+    }
+    lambda_group <- lavaan::lav_matrix_bdiag(lambda_block)
+    theta_group  <- lavaan::lav_matrix_bdiag(theta_block)
+    tau_group  <- lavaan::lav_matrix_bdiag(tau_block)
+    
+    # name the matrices' rows and columns
+    rownames(psi_group) <- colnames(psi_group) <- factors
+    rownames(alpha_group) <- colnames(alpha_group) <- factors
+    rownames(lambda_group) <- indicators
+    colnames(lambda_group) <- factors
+    rownames(theta_group) <- colnames(theta_group) <- indicators
+    rownames(tau_group) <- indicators
+    colnames(tau_group) <- factors
     
     # compute lambda_star and theta_star
     sigma_g <- lambda_group %*% psi_group %*% t(lambda_group) + theta_group
@@ -110,55 +97,48 @@ step2 <- function(step1output){
     }
     colnames(lambda_star) <- colnames(theta_star) <- factors
     
-    # Are there measurement blocks?
-    if(is.list(measurementmodel)){
-      # if yes, create lists to store MM parameter values per block
-      # (lists with M elements, where each element is a list with G elements)
-      psi_block <- lambda_block <- theta_block <- tau_block <- vector(mode = "list", length = M)
-      for(m in 1:M){
-        EST_block         <- lavaan::lavInspect(fit_step1[[m]], "est")
-        psi_block[[m]] <- lapply(X = EST_block, "[[", "psi")
-        lambda_block[[m]] <- lapply(X = EST_block, "[[", "lambda")
-        theta_block[[m]]  <- lapply(X = EST_block, "[[", "theta")
-        tau_block[[m]]  <- lapply(X = EST_block, "[[", "nu")
-      }
-      
-      # create lists to store MM parameter values per group
-      # (i.e., combine the block-wise MM parameters per group)
-      # --> Lists with G elements, where each element is a list with M elements
-      psi_group <- lambda_group <- theta_group <- tau_group <- vector(mode = "list", length = G)
-      for(g in 1:G){
-        # put MM matrices of each group in the respective list
-        for(m in 1:M) {
-          psi_group[[g]][[m]] <- psi_block[[m]][[g]]
-          lambda_group[[g]][[m]] <- lambda_block[[m]][[g]]
-          theta_group[[g]][[m]]  <- theta_block[[m]][[g]]
-          tau_group[[g]][[m]]  <- tau_block[[m]][[g]]
-        }
-        # combine the matrices of the different measurement blocks into a single matrix per group
-        psi_group[[g]] <- lavaan::lav_matrix_bdiag(psi_group[[g]])
-        lambda_group[[g]] <- lavaan::lav_matrix_bdiag(lambda_group[[g]])
-        theta_group[[g]]  <- lavaan::lav_matrix_bdiag(theta_group[[g]])
-        tau_group[[g]]  <- lavaan::lav_matrix_bdiag(tau_group[[g]])
-        
-        # name the matrices' rows and columns
-        rownames(psi_group[[g]]) <- colnames(psi_group[[g]]) <- factors
-        rownames(lambda_group[[g]]) <- indicators
-        colnames(lambda_group[[g]]) <- factors
-        rownames(theta_group[[g]]) <- colnames(theta_group[[g]]) <- indicators
-        rownames(tau_group[[g]]) <- indicators
-        colnames(tau_group[[g]]) <- factors
-      }
-    } else {
-      # if there are no measurement blocks, simply extract the MM parameters per group
-      psi_group <- lambda_group <- theta_group <-  vector(mode = "list", length = G)
-      for(g in 1:G){
-        psi_group[[g]] <- lavaan::lavInspect(fit_step1, "est")[[g]]$psi
-        lambda_group[[g]] <- lavaan::lavInspect(fit_step1, "est")[[g]]$lambda
-        theta_group[[g]] <- lavaan::lavInspect(fit_step1, "est")[[g]]$theta
-        tau_group[[g]] <- lavaan::lavInspect(fit_step1, "est")[[g]]$nu
-      }
+    # create lists to store MM parameter values per block
+    # (lists with M elements, where each element is a list with G elements)
+    psi_block <- alpha_block <- lambda_block <- theta_block <- tau_block <- vector(mode = "list", length = M)
+    for(m in 1:M){
+      EST_block         <- lavaan::lavInspect(fit_step1[[m]], "est")
+      psi_block[[m]] <- lapply(X = EST_block, "[[", "psi")
+      alpha_block[[m]] <- lapply(X = EST_block, "[[", "alpha")
+      lambda_block[[m]] <- lapply(X = EST_block, "[[", "lambda")
+      theta_block[[m]]  <- lapply(X = EST_block, "[[", "theta")
+      tau_block[[m]]  <- lapply(X = EST_block, "[[", "nu")
     }
+    
+    # create lists to store MM parameter values per group
+    # (i.e., combine the block-wise MM parameters per group)
+    # --> Lists with G elements, where each element is a list with M elements
+    psi_group <- alpha_group <- lambda_group <- theta_group <- tau_group <- vector(mode = "list", length = G)
+    for(g in 1:G){
+      # put MM matrices of each group in the respective list
+      for(m in 1:M) {
+        psi_group[[g]][[m]] <- psi_block[[m]][[g]]
+        alpha_group[[g]][[m]] <- alpha_block[[m]][[g]]
+        lambda_group[[g]][[m]] <- lambda_block[[m]][[g]]
+        theta_group[[g]][[m]]  <- theta_block[[m]][[g]]
+        tau_group[[g]][[m]]  <- tau_block[[m]][[g]]
+      }
+      # combine the matrices of the different measurement blocks into a single matrix per group
+      psi_group[[g]] <- lavaan::lav_matrix_bdiag(psi_group[[g]])
+      alpha_group[[g]] <- lavaan::lav_matrix_bdiag(alpha_group[[g]])
+      lambda_group[[g]] <- lavaan::lav_matrix_bdiag(lambda_group[[g]])
+      theta_group[[g]]  <- lavaan::lav_matrix_bdiag(theta_group[[g]])
+      tau_group[[g]]  <- lavaan::lav_matrix_bdiag(tau_group[[g]])
+      
+      # name the matrices' rows and columns
+      rownames(psi_group[[g]]) <- colnames(psi_group[[g]]) <- factors
+      rownames(alpha_group[[g]]) <- colnames(alpha_group[[g]]) <- factors
+      rownames(lambda_group[[g]]) <- indicators
+      colnames(lambda_group[[g]]) <- factors
+      rownames(theta_group[[g]]) <- colnames(theta_group[[g]]) <- indicators
+      rownames(tau_group[[g]]) <- indicators
+      colnames(tau_group[[g]]) <- factors
+    }
+    
     
     # compute lambda_star and theta_star per group
     for(g in 1:G) {
@@ -170,6 +150,12 @@ step2 <- function(step1output){
     
   }
   
+  MMparameters <- list("psi_group" = psi_group,
+                       "alpha_group" = alpha_group,
+                       "lambda_group" = lambda_group,
+                       "theta_group" = theta_group,
+                       "tau_group" = tau_group)
+  
   # assemble output
   output <- list("data" = data,
                  "lambda_star" = lambda_star,
@@ -177,9 +163,6 @@ step2 <- function(step1output){
                  "other" = list("factors" = factors,
                                 "indicators" =  indicators,
                                 "step1group" = group),
-                 "MMparameters" = list("psi_group" = psi_group,
-                                       "lambda_group" = lambda_group,
-                                       "theta_group" = theta_group,
-                                       "tau_group" = tau_group))
+                 "MMparameters" = MMparameters)
   return(output)
 }
