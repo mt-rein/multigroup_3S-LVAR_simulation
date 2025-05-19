@@ -199,7 +199,7 @@ do_sim <- function(pos, cond, outputfile, verbose = FALSE){
     
     # generate errors (item residuals):
     epsilon_g <- mvrnorm(nrow(eta_g), mu = rep(0, 8),
-                       Sigma = theta_g, empirical=T)
+                       Sigma = theta_g, empirical = FALSE)
     # transform factor scores into group's observed scores:
     data_g <- t(tau_g + lambda_g %*% t(eta_g[, c("eta1", "eta2")])) + epsilon_g |>
       as.data.frame()

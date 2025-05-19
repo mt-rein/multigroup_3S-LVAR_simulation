@@ -15,7 +15,7 @@ sim_VAR <- function(factors, obs, phi, zeta, mu, burn_in = 0){
   data <- as.data.frame(matrix(NA, nrow = burn_in + obs, ncol = factors))
   names(data) <- paste0("eta", 1:factors)
   
-  innovations <- MASS::mvrnorm(n = nrow(data), mu = rep(0, factors), Sigma = zeta, empirical = TRUE)
+  innovations <- MASS::mvrnorm(n = nrow(data), mu = rep(0, factors), Sigma = zeta, empirical = FALSE)
   
   for(i in 1:nrow(data)){
     # simulate the first observation only from the innovation
