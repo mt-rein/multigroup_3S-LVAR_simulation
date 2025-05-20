@@ -190,7 +190,7 @@ do_sim <- function(pos, cond, outputfile, verbose = FALSE){
       eta_i <- sim_VAR(factors = 2, obs = ss_t,
                        phi = phimat_g, zeta = zetamat_g,
                        mu = mu_i,
-                       burn_in = 0)
+                       burn_in = 20)
       
       eta_i$id <- i
       # merge with group's factor score data frame:
