@@ -83,6 +83,11 @@ step3 <- function(step2output, id, step3group = NULL){
                              NA, NA, NA, NA),
                    byrow = TRUE)
   
+  # x0 (= initial values of the latent constructs)
+  xmat <- mxMatrix('Full', nrow = xdim, ncol = 1,
+                   name='x0',
+                   free = FALSE,
+                   values = 0)
   
   # P0 (= (co)variances of the latent constructs)
   pmat <- mxMatrix('Symm', nrow = xdim, ncol = xdim,
@@ -117,10 +122,10 @@ step3 <- function(step2output, id, step3group = NULL){
     for(i in group_ids){
       if(!purrr::is_empty(step1group)){
         s1g <- data[data$id == i, step1group] |> unique()
-        alphas <- step2output$MMparameters$alpha_group[[which(groupnames == s1g)]] |> diag()
+        #alphas <- step2output$MMparameters$alpha_group[[which(groupnames == s1g)]] |> diag()
       } else {
         s1g <- 1
-        alphas <- step2output$MMparameters$alpha_group |> diag()
+        #alphas <- step2output$MMparameters$alpha_group |> diag()
       }
       
       # C matrix (= factor loadings, here fixed to lambda_star)
@@ -143,12 +148,6 @@ step3 <- function(step2output, id, step3group = NULL){
                        values = theta_star[s1g, ],
                        labels = NA
       )
-      
-      # x0 (= initial values of the latent constructs)
-      xmat <- mxMatrix('Full', nrow = xdim, ncol = 1,
-                       name='x0',
-                       free = c(FALSE, FALSE, FALSE, FALSE),
-                       values = c(0, 0, alphas))
       
       modelname <- personmodelnames[i]  |> as.character()
       temp_model <- mxModel(name = modelname,
