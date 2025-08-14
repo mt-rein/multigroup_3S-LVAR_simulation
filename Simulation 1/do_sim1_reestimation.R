@@ -1,19 +1,10 @@
 #### This script defines the simulation function do_sim() ####
 
-do_sim <- function(pos, cond, outputfile, verbose = FALSE){
+do_sim1_reestimation <- function(pos, cond, outputfile, verbose = FALSE){
   # pos = position in the condition grid
   # cond = the condition grid
   # outputfile = file name for the output CSV file
   # verbose = if TRUE, prints a message after the iteration is finished
-  
-  #### for testing:
-  # pos = 1
-  # invariance_level <- "partial_metric"
-  # pattern = "unidirectional"
-  # ss_n = 100
-  # ss_t = 40
-  # ss_ratio = "balanced"
-
   
   replication <- cond$replication[pos]
   iteration <- cond$iteration[pos]
@@ -199,7 +190,7 @@ do_sim <- function(pos, cond, outputfile, verbose = FALSE){
     
     # generate errors (item residuals):
     epsilon_g <- mvrnorm(nrow(eta_g), mu = rep(0, 8),
-                       Sigma = theta_g, empirical = FALSE)
+                         Sigma = theta_g, empirical = FALSE)
     # transform factor scores into group's observed scores:
     data_g <- t(tau_g + lambda_g %*% t(eta_g[, c("eta1", "eta2")])) + epsilon_g |>
       as.data.frame()
@@ -264,9 +255,9 @@ do_sim <- function(pos, cond, outputfile, verbose = FALSE){
                                       "",
                                       paste(c(output_step1_single$result$error),
                                             collapse = "; "))
-    rerun_step1 <- TRUE
+    rerun_step1_single <- TRUE
   } else {
-    rerun_step1 <- FALSE
+    rerun_step1_single <- FALSE
   }
   
   #### Step 2 ####
@@ -294,6 +285,8 @@ do_sim <- function(pos, cond, outputfile, verbose = FALSE){
     step2_single_error_text <- "step1 not successful"
   }
   
+  ## new seed (to force new starting values)
+  set.seed(seed_cond + sample(1:1000, 1))
   #### Step 3 ####
   if(!step1_single_error & !step2_single_error){                                              # only proceed if there is no error in step 1 as well as step 2
     output_step3_single <- run_step3(step2output = output_step2_single$result$result,
@@ -449,6 +442,35 @@ do_sim <- function(pos, cond, outputfile, verbose = FALSE){
                                    paste(c(output_step1_multi$result$error),
                                          collapse = "; "))
   
+  # check whether the solution is admissible:
+  if(grepl("variances are negative", step1_multi_warning_text, ignore.case = TRUE)) {
+    # Re-run step 1 with wide bounds in case there's a heywood case
+    output_step1_multi <- run_step1(data = data,
+                                    measurementmodel = model_step1,
+                                    group = "group",
+                                    invariances = invariances,
+                                    partial_noninvariances = partial_noninvariances,
+                                    bounds = "wide")
+    
+    # extract error/warning messages (if applicable):
+    step1_multi_warning <- ifelse(is_empty(output_step1_multi$warnings),
+                                  FALSE, TRUE)
+    step1_multi_warning_text <- ifelse(is_empty(output_step1_multi$warnings),
+                                       "",
+                                       paste(c(output_step1_multi$warnings),
+                                             collapse = "; ")
+    )
+    step1_multi_error <- ifelse(is_empty(output_step1_multi$result$error),
+                                FALSE, TRUE)
+    step1_multi_error_text <- ifelse(is_empty(output_step1_multi$result$error),
+                                     "",
+                                     paste(c(output_step1_multi$result$error),
+                                           collapse = "; "))
+    rerun_step1_multi <- TRUE
+  } else {
+    rerun_step1_multi <- FALSE
+  }
+  
   #### Step 2 ####
   if(!step1_multi_error){                                                             # only proceed if there is no error in step 1
     output_step2_multi <- run_step2(step1output = output_step1_multi$result$result)
@@ -473,6 +495,9 @@ do_sim <- function(pos, cond, outputfile, verbose = FALSE){
     step2_multi_error <- FALSE
     step2_multi_error_text <- "step1 not successful"
   }
+  
+  ## new seed (to force new starting values)
+  set.seed(seed_cond + sample(1:1000, 1))
   
   #### Step 3 ####
   if(!step1_multi_error & !step2_multi_error){                                              # only proceed if there is no error in step 1 as well as step 2
@@ -573,7 +598,7 @@ do_sim <- function(pos, cond, outputfile, verbose = FALSE){
     tau_ests <- output_step2_multi$result$result$MMparameters$tau_group
     tau_ests <- do.call(rbind, lapply(tau_ests, function(x){c(x[3:4, 1], x[7:8, 2])}))
     tau_true <- matrix(c(tau_g1[c(3, 4, 7, 8)], tau_g2[c(3, 4, 7, 8)]),
-                      nrow = 2, byrow = TRUE)
+                       nrow = 2, byrow = TRUE)
     bias_tau <- sum(tau_ests - tau_true)/(4*2)  |> as.numeric()
     RMSE_tau <- sqrt(sum((tau_ests - tau_true)^2)/(4*2)) |> as.numeric()
   } else {
@@ -660,9 +685,10 @@ do_sim <- function(pos, cond, outputfile, verbose = FALSE){
               "RMSE_lambda" = RMSE_lambda, "RMSE_theta" = RMSE_theta, "RMSE_tau" = RMSE_tau,
               "step1_single_warning" = step1_single_warning, "step2_single_warning" = step2_single_warning, "step3_single_warning" = step3_single_warning,
               "step1_single_error" = step1_single_error, "step2_single_error" = step2_single_error, "step3_single_error" = step3_single_error,
-              "rerun_step1" = rerun_step1,
+              "rerun_step1_single" = rerun_step1_single,
               "step1_multi_warning" = step1_multi_warning, "step2_multi_warning" = step2_multi_warning, "step3_multi_warning" = step3_multi_warning,
               "step1_multi_error" = step1_multi_error, "step2_multi_error" = step2_multi_error, "step3_multi_error" = step3_multi_error,
+              "rerun_step1_multi" = rerun_step1_multi,
               "seed" = seed_cond, "pos" = pos,
               "step1_single_warning_text" = step1_single_warning_text, "step2_single_warning_text" = step2_single_warning_text, "step3_single_warning_text" = step3_single_warning_text,
               "step1_single_error_text" = step1_single_error_text, "step2_single_error_text" = step2_single_error_text, "step3_single_error_text" = step3_single_error_text,

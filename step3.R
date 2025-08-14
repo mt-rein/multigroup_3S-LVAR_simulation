@@ -111,7 +111,7 @@ step3 <- function(step2output, id, step3group = NULL){
                    name = 'u')
   
   #### 4) create OpenMx models ####
-  # create a list of models (one for each individual) for each latent class:
+  # create a list of models (one for each individual):
   personmodelnames <- paste0("id_", unique_ids)
   names(personmodelnames) <- unique_ids
   
